@@ -1,0 +1,89 @@
+services:
+  mongo1:
+    image: mongo:6
+    container_name: mongo1
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo1_data:/data/db
+
+  mongo2:
+    image: mongo:6
+    container_name: mongo2
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      - "27018:27017"
+    volumes:
+      - mongo2_data:/data/db
+
+  mongo3:
+    image: mongo:6
+    container_name: mongo3
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      - "27019:27017"
+    volumes:
+      - mongo3_data:/data/db
+
+  mongo-init:
+    image: mongo:6
+    container_name: mongo-init
+    depends_on:
+      - mongo1
+      - mongo2
+      - mongo3
+    restart: "no"
+    entrypoint: ["bash", "-c", "sleep 8 && mongosh --host mongo1:27017 /scripts/init-replica.js"]
+    volumes:
+      - ./mongo-init:/scripts:ro
+
+  server1:
+    build: .
+    container_name: server1
+    command: python server/server.py Server1 5001
+    depends_on:
+      - mongo-init
+
+  server2:
+    build: .
+    container_name: server2
+    command: python server/server.py Server2 5002
+    depends_on:
+      - mongo-init
+
+  server3:
+    build: .
+    container_name: server3
+    command: python server/server.py Server3 5003
+    depends_on:
+      - mongo-init
+
+  middleware:
+    build: .
+    container_name: middleware
+    command: python middleware/middleware.py
+    ports:
+      - "5000:5000"
+    depends_on:
+      - server1
+      - server2
+      - server3
+
+  streamlit:
+    build: .
+    container_name: streamlit
+    command: streamlit run client/app.py --server.port 8501 --server.address 0.0.0.0
+    ports:
+      - "8501:8501"
+    depends_on:
+      - middleware
+
+volumes:
+  mongo1_data:
+  mongo2_data:
+  mongo3_data:
+  
+networks:
+  default:
+    driver: bridge
